@@ -176,5 +176,6 @@ venv.bak/
 # Custom stuff
 *.csv
 *.pickle
+*.out
 
 # End of https://www.gitignore.io/api/python,pycharm,jupyternotebook
