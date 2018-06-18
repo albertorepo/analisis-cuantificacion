@@ -1,8 +1,10 @@
 from itertools import combinations
 from math import sqrt, sin, cos, pi
 
-import baycomp as bc
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import baycomp as bc
 import numpy as np
 import pandas as pd
 from sklearn.externals.joblib import delayed, Parallel
@@ -124,7 +126,7 @@ fig.tight_layout()
 fig.savefig("figures/Hierarchical_20x50bags.png")
 
 
-probs_df = pd.concat(Parallel(n_jobs=-1)(
+probs_df = pd.concat(Parallel(n_jobs=1)(
     delayed(do_hierarchical_test)(m1, m2) for m1, m2 in methods_combs))
 
 
