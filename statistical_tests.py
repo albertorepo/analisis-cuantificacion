@@ -101,9 +101,7 @@ _ = [axs[i][i].axis("off") for i in range(len(methods))]
 _ = [axs[i][i].text(0.32, 0.42, methods[i], fontsize=60) for i in range(len(methods))]
 
 
-# for m1, m2 in methods_combs:
-
-def do_hierarchical_test(m1, m2):
+for m1, m2 in methods_combs:
     i, j = methods.index(m1), methods.index(m2)
     try:
         data_hdx = get_data(m1)
@@ -118,17 +116,20 @@ def do_hierarchical_test(m1, m2):
     except RuntimeError as err:
         print("Failed Hierarchical Test between ", m1, m2, err)
 
-    return pd.DataFrame([[m1, m2] + list(test.probs())],
-                        columns=["Cuantificador1", "Cuantificador2", "p(m1)", "p(rope)", "p(m2)"])
+        prob_df = prob_df.append(pd.DataFrame([[m1, m2] + list(test.probs())],
+                        columns=["Cuantificador1", "Cuantificador2", "p(m1)", "p(rope)", "p(m2)"]))
 
 
 fig.tight_layout()
 fig.savefig("figures/Hierarchical_20x50bags.png")
 
 
+<<<<<<< HEAD
 probs_df = pd.concat(Parallel(n_jobs=1)(
     delayed(do_hierarchical_test)(m1, m2) for m1, m2 in methods_combs))
 
+=======
+>>>>>>> 57175b7b59fd6f0cbf52d225d23b954e8fe7bf6a
 
 fig, axs = plt.subplots(len(methods), len(methods), figsize=(25, 25))
 _ = [axs[i][i].axis("off") for i in range(len(methods))]
