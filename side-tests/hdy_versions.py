@@ -1,5 +1,5 @@
 import numpy as np
-from quantification.dm import HDy, pHDy, rHDy
+from quantification.dm import HDy, pHDy, rHDy, MMy
 from sklearn.externals.joblib import Parallel, delayed
 
 random_state = 42
@@ -9,7 +9,7 @@ import pandas as pd
 
 pd.set_option('display.float_format', lambda x: '%.5f' % x)
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -33,8 +33,8 @@ def g_mean(clf, X, y):
     return np.sqrt((1 - fpr) * tpr)
 
 
-# datasets_dir = "/Users/albertocastano/PycharmProjects/DeepLLP/data/datasets/csv"
-datasets_dir = "../datasets"
+datasets_dir = "/Users/albertocastano/PycharmProjects/DeepLLP/data/datasets/csv"
+# datasets_dir = "../datasets"
 dataset_files = [file for file in glob.glob(os.path.join(datasets_dir, "*.csv")) if
                  os.path.split(file)[-1] not in ["balance.2.csv", "lettersG.csv", "k9.csv"]]
 dataset_names = [os.path.split(name)[-1][:-4] for name in dataset_files]
@@ -42,9 +42,11 @@ print("There are a total of {} datasets.".format(len(dataset_names)))
 
 n_datasets = len(dataset_names)
 
-columns = ['dataset', 'method', 'truth', 'predictions', 'kld', 'mae']
+columns = ['dataset', 'method', 'rep', 'fold', 'truth', 'predictions', 'kld', 'mae']
 
-num_bags = 1000
+n_reps = 10
+n_splits = 3
+num_bags = 100
 
 
 def normalize(X_train, X_test):
@@ -62,11 +64,8 @@ def load_data(dfile):
     if -1 in np.unique(y):
         y[y == -1] = 0
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_state=random_state)
+    return X, y
 
-    X_train, X_test = normalize(X_train, X_test)
-
-    return X_train, X_test, y_train, y_test
 
 
 estimator_grid = {
@@ -79,51 +78,64 @@ grid_params = dict(verbose=False, scoring=g_mean, n_jobs=-1)
 # for dname, dfile in tqdm(zip(dataset_names, dataset_files), total=n_datasets):
 
 
-def train_on_a_dataset(dname, dfile):
+def train_on_a_dataset(dname, dfile, rep):
     errors_df = pd.DataFrame(columns=columns)
-    X_train, X_test, y_train, y_test = load_data(dfile)
-    ac = AC(estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
-            estimator_grid=estimator_grid, grid_params=grid_params)
+    X, y = load_data(dfile)
+    skf = StratifiedKFold(n_splits=n_splits)
+    for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
 
-    pac = PAC(estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
-              estimator_grid=estimator_grid, grid_params=grid_params)
-
-    hdy = HDy(b=8, estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
-              estimator_grid=estimator_grid, grid_params=grid_params)
-
-    rhdy = rHDy(b=8, estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
+        ac = AC(estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
                 estimator_grid=estimator_grid, grid_params=grid_params)
 
-    phdy = pHDy(n_percentiles=8,
-                estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
-                estimator_grid=estimator_grid, grid_params=grid_params)
+        pac = PAC(estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
+                  estimator_grid=estimator_grid, grid_params=grid_params)
 
-    ac.fit(X_train, y_train)
-    pac.fit(X_train, y_train)
-    hdy.fit(X_train, y_train)
-    rhdy.fit(X_train, y_train)
-    phdy.fit(X_train, y_train)
+        hdy = HDy(b=8, estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
+                  estimator_grid=estimator_grid, grid_params=grid_params)
 
-    for X_test_, y_test_, prev_true, in create_bags_with_multiple_prevalence(X_test, y_test, num_bags):
-        prev_true = prev_true[1]
-        prev_preds = [
-            ac.predict(X_test_)[1],
-            pac.predict(X_test_)[1],
-            hdy.predict(X_test_)[1],
-            rhdy.predict(X_test_)[1],
-            phdy.predict(X_test_)[1]
-        ]
-        for method, prev_pred in zip(["AC", "PAC", "HDy", "rHDy", "pHDy"], prev_preds):
-            kld = binary_kl_divergence(prev_true, prev_pred)
-            mae = absolute_error(prev_true, prev_pred)
+        rhdy = rHDy(b=8, estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
+                    estimator_grid=estimator_grid, grid_params=grid_params)
 
-            errors_df = errors_df.append(
-                pd.DataFrame([[dname, method, prev_true, prev_pred, kld, mae]], columns=columns))
+        phdy = pHDy(n_percentiles=8,
+                    estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
+                    estimator_grid=estimator_grid, grid_params=grid_params)
+
+        mm = MMy(estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
+                    estimator_grid=estimator_grid, grid_params=grid_params)
+
+        ac.fit(X_train, y_train)
+        pac.fit(X_train, y_train)
+        hdy.fit(X_train, y_train)
+        rhdy.fit(X_train, y_train)
+        phdy.fit(X_train, y_train)
+        mm.fit(X_train, y_train)
+
+
+        for X_test_, y_test_, prev_true, in create_bags_with_multiple_prevalence(X_test, y_test, num_bags):
+            prev_true = prev_true[1]
+            prev_preds = [
+                ac.predict(X_test_)[1],
+                pac.predict(X_test_)[1],
+                hdy.predict(X_test_)[1],
+                rhdy.predict(X_test_)[1],
+                phdy.predict(X_test_)[1],
+                mm.predict(X_test_)[1]
+            ]
+            for method, prev_pred in zip(["AC", "PAC", "HDy", "rHDy", "pHDy", "MM"], prev_preds):
+                kld = binary_kl_divergence(prev_true, prev_pred)
+                mae = absolute_error(prev_true, prev_pred)
+
+                errors_df = errors_df.append(
+                    pd.DataFrame([[dname, method, rep, fold, prev_true, prev_pred, kld, mae]], columns=columns))
 
     return errors_df
 
-
+rep_list = np.repeat(np.arange(n_reps), n_datasets)
 errors_df = pd.concat(Parallel(n_jobs=-1)(
-    delayed(train_on_a_dataset)(dname, dfile) for dname, dfile in zip(dataset_names, dataset_files)))
+    delayed(train_on_a_dataset)(dname, dfile, rep) for dname, dfile, rep in zip(n_reps * dataset_names,
+                                                                                n_reps * dataset_files,
+                                                                                rep_list)))
 
 errors_df.to_csv("results_1000bags.csv", index=None)
