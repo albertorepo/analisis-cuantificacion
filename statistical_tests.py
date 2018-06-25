@@ -62,7 +62,7 @@ def plot_simplex(test, ax, names=None):
 
 
 def get_data(method, aggregate=False):
-    results = pd.read_csv("results_nonlinear_geometric_clf_1000bags.csv")
+    results = pd.read_csv("results_nonlinear_geometric_clf_20x50.csv")
 
     results = results[results.method == method].sort_values("dataset")
     maes = results["mae"].values.reshape(41, -1)
@@ -116,20 +116,12 @@ for m1, m2 in methods_combs:
     except RuntimeError as err:
         print("Failed Hierarchical Test between ", m1, m2, err)
 
-        prob_df = prob_df.append(pd.DataFrame([[m1, m2] + list(test.probs())],
+    prob_df = prob_df.append(pd.DataFrame([[m1, m2] + list(test.probs())],
                         columns=["Cuantificador1", "Cuantificador2", "p(m1)", "p(rope)", "p(m2)"]))
 
 
 fig.tight_layout()
 fig.savefig("figures/Hierarchical_20x50bags.png")
-
-
-<<<<<<< HEAD
-probs_df = pd.concat(Parallel(n_jobs=1)(
-    delayed(do_hierarchical_test)(m1, m2) for m1, m2 in methods_combs))
-
-=======
->>>>>>> 57175b7b59fd6f0cbf52d225d23b954e8fe7bf6a
 
 fig, axs = plt.subplots(len(methods), len(methods), figsize=(25, 25))
 _ = [axs[i][i].axis("off") for i in range(len(methods))]

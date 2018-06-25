@@ -38,9 +38,8 @@ dataset_files = [file for file in glob.glob(os.path.join(datasets_dir, "*.csv"))
 dataset_names = [os.path.split(name)[-1][:-4] for name in dataset_files]
 print("There are a total of {} datasets.".format(len(dataset_names)))
 
+columns = ['dataset', 'method', 'kld', 'mae']
 n_datasets = len(dataset_names)
-
-columns = ['dataset', 'method', 'truth', 'predictions', 'kld', 'mae']
 
 num_bags = 50
 
@@ -75,7 +74,7 @@ grid_params = dict(verbose=False, scoring=g_mean, n_jobs=-1)
 
 
 def train_on_a_dataset(dname, dfile):
-    errors_df = pd.DataFrame(columns=columns)
+
     X_train, X_test, y_train, y_test = load_data(dfile)
     random_state=42
     edy = EDy(estimator_class=RandomForestClassifier(random_state=random_state, class_weight='balanced'),
@@ -100,8 +99,11 @@ def train_on_a_dataset(dname, dfile):
     hdx.fit(X_train, y_train)
     cvmy.fit(X_train, y_train)
     ac.fit(X_train, y_train)
+    
+    maes = np.zeros((num_bags, 6)) #  prevalences, n_methods
+    klds = np.zeros((num_bags, 6)) #  prevalences, n_methods
 
-    for X_test_, y_test_, prev_true, in create_bags_with_multiple_prevalence(X_test, y_test, num_bags):
+    for n_bag, (X_test_, y_test_, prev_true) in enumerate(create_bags_with_multiple_prevalence(X_test, y_test, num_bags)):
         prev_true = prev_true[1]
         prev_preds = [
             edy.predict(X_test_)[1],
@@ -111,14 +113,20 @@ def train_on_a_dataset(dname, dfile):
             cvmy.predict(X_test_)[1],
             ac.predict(X_test_)[1],
         ]
-        for method, prev_pred in zip(["EDy", "EDX", "HDy", "HDX", "CvMy", "AC"], prev_preds):
+        for n_method, (method, prev_pred) in enumerate(zip(["EDy", "EDX", "HDy", "HDX", "CvMy", "AC"], prev_preds)):
             kld = binary_kl_divergence(prev_true, prev_pred)
             mae = absolute_error(prev_true, prev_pred)
-
-            errors_df = errors_df.append(
-                pd.DataFrame([[dname, method, prev_true, prev_pred, kld, mae]], columns=columns))
+            
+            maes[n_bag, n_method] = mae
+            klds[n_bag, n_method] = kld
+            
+        
+    maes = maes.mean(axis=0)
+    klds = klds.mean(axis=0)
+    errors_df = pd.DataFrame(list(zip([dname] * 6, ["EDy", "EDX", "HDy", "HDX", "CvMy", "AC"], maes, klds)), columns=columns)
 
     return errors_df
+
 total_df = pd.DataFrame(columns=columns)
 
 
@@ -127,4 +135,4 @@ errors_df = pd.concat(Parallel(n_jobs=-1)(
     delayed(train_on_a_dataset)(dname, dfile) for dname, dfile in zip(dataset_names * 20, dataset_files * 20)))
 
 
-errors_df.to_csv("results_distance_methods_20x50.csv", index=None)
+errors_df.to_csv("results_distance_methods_20x50_agg.csv", index=None)
